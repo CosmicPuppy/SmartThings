@@ -1,0 +1,146 @@
+private def myVersion() { "v0.2.0-Alpha+021" }
+/**
+ *  Copyright 2015 Terry Gauchat.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *  in compliance with the License. You may obtain a copy of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *  for the specific language governing permissions and limitations under the License.
+ *
+ *	Blinds Control customized Virtual Switch
+ *
+ *  Author: Terry R. Gauchat: @CosmicPuppy
+ *  Date: 2015-12-20
+ *  	- Attempting to mutate this for single switch window blind control.
+ *
+ */
+
+/**
+ * TODO: Currently we depend on a linking SmartApp to track the state of the blinds and issue
+ * 		     physical switch commands (off/on/off?) flick if and ONLY if needed.
+ *       The SmartApp contains "What are the real blind's current physical state?" option to start or reset sync.
+ *       Consider: Should we add some way to start/reset sync within this Device Type with a couple extra buttons?
+ *           BUT: If that button exists here, then the sync SmartApp needs to subscribe to it
+ *           in order to update it's own "state.blindsState" variable!
+ */
+
+metadata {
+
+    definition (name: "Blinds Virtual Switch", namespace: "cosmicpuppy", author: "Terry") {
+		capability "Switch"
+
+		/* Needed to prevent loops IF sendEvent( device, map ) is not functional. */
+		command "onPhysical"
+		command "offPhysical"
+        command "version"
+        
+        /* Dummy Commands and Attribute to try to show presumed real physical outlet State if informed by SmartApp. */
+        command "updateOutletAsOn"
+        command "updateOutletAsOff"
+		attribute "outlet", "string"
+        
+        /* Temporary? Attribute to track version number during development. */
+        attribute "version", "string"
+	}
+
+	tiles {
+		standardTile("switch", "device.switch", width: 2, height: 2, canChangeIcon: true) {
+			state "off", label: '${currentValue}', action: "switch.on", icon: "st.switches.switch.off", backgroundColor: "#ffffff"
+			state "on", label: '${currentValue}', action: "switch.off", icon: "st.switches.switch.on", backgroundColor: "#79b821"
+		}
+		standardTile("on", "device.switch", decoration: "flat") {
+			state "default", label: 'On', action: "switch.on", backgroundColor: "#ffffff"
+		}
+		standardTile("off", "device.switch", decoration: "flat") {
+			state "default", label: 'Off', action: "switch.off", backgroundColor: "#ffffff"
+		}
+
+		standardTile("version", "device.version", decoration: "flat", width: 1, height: 1) {
+			state "default", label:'${currentValue}', action:"version", defaultState: true
+		}
+
+		/* For information sake, the SmartApp will attempt to send the state of the Real Outlet. */
+		valueTile("outlet", "device.outlet", decoration: "flat", width: 1, height: 1) {
+			state "outlet", label:'Outlet State: ${currentValue}'
+		}
+		
+        main "switch"
+		details(["switch","on","off","outlet","version"])
+		//details(["switch","on","off","version","outlet","refresh"])
+	}
+} /* metadata{} */
+
+/**
+ * Frequently edited options, parameters, constants.
+ */
+/**
+ * Disable specific level of logging by commenting out log.* expressions as desired.
+ * NB: Someday SmartThings's live log viewer front-end should provide dynamic filter-by-level, right?
+ */
+private def myDebug(text) {
+    log.debug myLogFormat(text) // NB: Debug level messages including the PIN number! Keep debug off mostly.
+}
+private def myTrace(text) {
+    log.trace myLogFormat(text) // NB: Trace messages are farely minimal. Still helpful even if debug on.
+}
+private def myInfo(text) {
+    log.info myLogFormat(text)  // NB: No usages in this program. TODO: Should some Trace be Info?
+}
+private def myLogFormat(text) {
+    return "\"${device.label}\".(\"${device.name}\"): ${text}"
+}
+
+/* Parse */
+def parse(String description) {
+    myDebug "parse( description: ${description})."
+	def pair = description.split(":")
+	sendEvent(name: "version", value: myVersion(), isStateChange: true);
+	createEvent(name: pair[0].trim(), value: pair[1].trim())
+}
+
+/* Commands */
+def on() {
+	myTrace "on()"
+	sendEvent(name: "switch", value: "on")
+}
+def off() {
+	myTrace "off()"
+	sendEvent(name: "switch", value: "off")
+}
+
+/**
+ * Let Blinds be declared on or off without triggering power.
+ * So we define a distinct Commands that shouldn't be caught by the tracking SmartApp.
+ */
+def onPhysical() {
+	myTrace "onPhysical()"
+	sendEvent(name: "switch", value: "on", descriptionText:  "onPhysical  declared.", displayed: true)
+}
+def offPhysical() {
+	myTrace "offPhysical()"
+	sendEvent(name: "switch", value: "off", descriptionText: "offPhysical declared.", displayed: true)
+}
+
+def updateOutletAsOn() {
+	myTrace "updateOutletAsOn()"
+    sendEvent(name: "outlet", value: "on",  isStateChange: true, displayed: false)
+}
+
+def updateOutletAsOff() {
+	myTrace "updateOutletAsOff()"
+    sendEvent(name: "outlet", value: "off", isStateChange: true, displayed: false)
+}
+
+def version() {
+	myTrace "version()"
+    sendEvent(name: "version", value: myVersion(), isStateChange: true);
+}
+
+
+/* =========== */
+/* End of File */
+/* =========== */
