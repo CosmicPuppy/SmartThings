@@ -41,18 +41,16 @@ preferences(oauthPage: "deviceAuthorization") {
 			input "temperatures", "capability.temperatureMeasurement", title:"5) Or this final list:", multiple: true, required: false
 		}
 		
-		if (state) {
-			section( "ActionTiles Stream Status" ) {
-				if (isLocationStreaming()) {
-					paragraph "$location.name is currently streaming event data to ActionTiles."
-				} else {
-					paragraph "$location.name is currently not streaming any event data to ActionTiles."
-				}
-			}
-		}
-		remove("Uninstall", "Are you sure you want to uninstall ActionTiles?")
+		remove("Uninstall", "Are you sure you want to uninstall?")
 	}
 }
+
+def logLevels() {["Error", "Warn", "Info", "Debug", "Trace"]}
+def log_info(obj)  {if (1 >= logLevels().indexOf("Info")) { log.info obj }}
+def log_error(obj) {if (1 >= logLevels().indexOf("Error")) { log.error obj }}
+def log_debug(obj) {if (1 >= logLevels().indexOf("Debug")) { log.debug obj }}
+def log_trace(obj) {if (1 >= logLevels().indexOf("Trace")) { log.trace obj }}
+
 
 def installed() {
 	log.info "Installing the SmartApp"
@@ -66,14 +64,106 @@ def updated() {
 
 def initialize() {
 	log.info "Initializing the SmartApp"
+	history();
 	[status: "ok"]
 }
 
-
 def uninstalled() {
-	log.info "Uninstalling ActionTiles"
+	log.info "Uninstalling the SmartApp"
 	revokeAccessToken()
 }	
+
+
+def handleError(e, method) {
+	def error = [message: "\"Unexpected error. \"",
+		error: "\"$e\"", method: "\"${method}\""]
+	log.error(error)
+	error
+}
+
+def getEventsOfDevice(device) {
+	def today = new Date()
+	def then = timeToday(today.format("HH:mm"), TimeZone.getTimeZone('UTC')) - 1
+	device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[description: it.description, descriptionText: it.descriptionText, displayName: it.displayName, date: it.date, name: it.name, unit: it.unit, source: it.source, value: it.value]}
+}
+
+def filterEventsPerCapability(events, deviceType) {
+	log_trace "start filterEventsPerCapability"
+	def acceptableEventsPerCapability = [
+		light           : ["switch"],
+		dimmerLight     : ["switch", "level"],
+		switch          : ["switch"],
+		dimmer          : ["switch", "level"],
+		momentary       : ["switch"],
+		themeLight      : ["switch"],
+		thermostatHeat  : ["temperature", "heatingSetpoint", "thermostatFanMode", "thermostatOperatingState",],
+		thermostatCool  : ["temperature", "coolingSetpoint", "thermostatFanMode", "thermostatOperatingState",],
+		lock            : ["lock"],
+		music           : ["status", "level", "trackDescription", "mute"],
+		camera          : [],
+		presence        : ["presence"],
+		contact         : ["contact"],
+		motion          : ["motion"],
+		temperature     : ["temperature"],
+		humidity        : ["humidity"],
+		water           : ["water"],
+		battery         : ["battery"],
+		energy          : ["energy"],
+		power           : ["power"],
+		acceleration    : ["acceleration"],
+		luminosity      : ["illuminance"],
+		weather         : ["temperature", "weather"],
+	]
+	
+	if (events) events*.deviceType = deviceType
+	def result = events?.findAll{it.name in acceptableEventsPerCapability[deviceType]}
+	log_trace "end filterEventsPerCapability"
+	result
+}
+
+def getAllDeviceEvents() {
+	log_trace "start getAllDeviceEvents"
+
+	def eventsPerCapability = [
+		light           : lights                ?.collect{getEventsOfDevice(it)},
+		dimmerLight     : dimmerLights          ?.collect{getEventsOfDevice(it)},
+		switch          : switches              ?.collect{getEventsOfDevice(it)},
+		dimmer          : dimmers               ?.collect{getEventsOfDevice(it)},
+		momentary       : momentaries           ?.collect{getEventsOfDevice(it)},
+		themeLight      : themeLights           ?.collect{getEventsOfDevice(it)},
+		thermostatHeat  : thermostatsHeat       ?.collect{getEventsOfDevice(it)},
+		thermostatCool  : thermostatsCool       ?.collect{getEventsOfDevice(it)},
+		lock            : locks                 ?.collect{getEventsOfDevice(it)},
+		music           : music                 ?.collect{getEventsOfDevice(it)},
+		camera          : camera                ?.collect{getEventsOfDevice(it)},
+		presence        : presence              ?.collect{getEventsOfDevice(it)},
+		contact         : contacts              ?.collect{getEventsOfDevice(it)},
+		motion          : motion                ?.collect{getEventsOfDevice(it)},
+		temperature     : temperature           ?.collect{getEventsOfDevice(it)},
+		humidity        : humidity              ?.collect{getEventsOfDevice(it)},
+		water           : water                 ?.collect{getEventsOfDevice(it)},
+		battery         : battery               ?.collect{getEventsOfDevice(it)},
+		energy          : energy                ?.collect{getEventsOfDevice(it)},
+		power           : power                 ?.collect{getEventsOfDevice(it)},
+		acceleration    : acceleration          ?.collect{getEventsOfDevice(it)},
+		luminosity      : luminosity            ?.collect{getEventsOfDevice(it)},
+		weather         : weather               ?.collect{getEventsOfDevice(it)},
+	]
+	
+	def filteredEvents = [:]
+	
+	eventsPerCapability.each {deviceType, events ->
+		filteredEvents[deviceType] = filterEventsPerCapability(events?.flatten(), deviceType)
+	}
+	def result = filteredEvents.values()?.flatten()?.findAll{it}?.sort{"$it.date.time" + "$it.deviceType"}.reverse()
+	
+	log_trace "end getAllDeviceEvents"
+	
+	result 
+}
+
+
+
 
 
 mappings {
@@ -93,16 +183,80 @@ def headHistory() {
 <link rel="stylesheet" href="https://code.jquery.com/mobile/1.4.4/jquery.mobile-1.4.4.min.css" />
 <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/weather-icons/1.3.2/css/weather-icons.min.css" />
-<link href="${assetPath()}/style.${appVersion()}.min.css?u=0" rel="stylesheet">
+
 <link href='https://fonts.googleapis.com/css?family=Mallanna' rel='stylesheet' type='text/css'>
 <script src="https://code.jquery.com/jquery-2.1.1.min.js" type="text/javascript"></script>
 <script src="https://code.jquery.com/mobile/1.4.4/jquery.mobile-1.4.4.min.js" type="text/javascript"></script>
-<script src="${assetPath()}/jquery.ui.touch-punch.min.js" type="text/javascript"></script>
+
 <style>
-${getThemeLightIcon().css}
+
 </style>
 """
 }
+
+
+
+def historyNav() {
+"""
+<div style="" class="historyNav">
+<i class="fa fa-fw fa-arrow-left" onclick="location.replace('${generateURLWithTokenOrRedirect("back")}')"></i>
+<i class="fa fa-fw fa-refresh" onclick="this.className = this.className + ' fa-spin'; location.reload();"></i>
+<i class="fa fa-fw fa-chevron-up" onclick="window.scrollTo(0, 0);"></i>
+</div>
+"""
+}
+
+def history() {
+	// render contentType: "text/html", data: """<!DOCTYPE html><html><head>${headHistory()} \n<style>""</style></head><body>${historyNav()}<ul class="history-list list">\n${getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n")}</ul></body></html>"""
+	log.debug ${getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n")}
+}
+
+
+
+
+def renderEvent(data) {return """<li class="item tile $data.deviceType" data-name="$data.name" data-value="$data.value"><div class="event-icon">${getEventIcon(data)}</div><div class="event">$data.displayName &nbsp;<i class="fa fa-long-arrow-right"></i> $data.value${data.unit ?: ""}</div><div class="date">${formatDate(data.date)}</div></li>"""}
+
+def getDeviceData(device, type) {[tile: "device",  active: isActive(device, type), type: type, device: device.id, name: device.displayName, value: getDeviceValue(device, type), level: getDeviceLevel(device, type), isValue: isValue(device, type)]}
+
+def getDeviceFieldMap() {[lock: "lock", themeLight: "switch", light: "switch", "switch": "switch", dimmer: "switch", dimmerLight: "switch", contact: "contact", presence: "presence", temperature: "temperature", humidity: "humidity", luminosity: "illuminance", motion: "motion", acceleration: "acceleration", water: "water", power: "power", energy: "energy", battery: "battery"]}
+
+def getActiveDeviceMap() {[lock: "unlocked", themeLight: "on", light: "on", "switch": "on", dimmer: "on", dimmerLight: "on", contact: "open", presence: "present", motion: "active", acceleration: "active", water: "wet"]}
+
+def isValue(device, type) {!(["momentary", "camera"] << getActiveDeviceMap().keySet()).flatten().contains(type)}
+
+
+def getDeviceValue(device, type) {
+	try {
+	log_trace "getDeviceValue $device, $type"
+	def unitMap = [temperature: "°", humidity: "%", luminosity: "lx", battery: "%", power: "W", energy: "kWh"]
+	def field = getDeviceFieldMap()[type]
+	def value = "n/a"
+	try {
+		value = device.respondsTo("currentValue") ? device.currentValue(field) : device.value
+	} catch (e) {
+		log_error "Device $device ($type) does not report $field properly. This is probably due to numerical value returned as text."
+	}
+	if (!isValue(device, type)) return value
+	else return "${roundNumber(value)}${unitMap[type] ?: ""}"
+	} catch (e) {
+		handleError(e, "getDeviceValue $device, $type");
+	}
+}
+
+def getDeviceLevel(device, type) {
+	log_trace "getDeviceLevel $device, $type"
+	if (type == "dimmer" || type == "dimmerLight" || type == "music") return "${(device.currentValue("level") ?: 0) / 10.0}".toDouble().round() ?: 1
+}
+
+def handler(e) {
+	try {
+		log_debug "event from: $e.displayName, value: $e.value, source: $e.source, description: $e.description"
+		updateStateTS()
+	} catch (ee) {
+		handleError(ee, "handler")
+	}
+}
+
 
 
 def getTS() {
@@ -146,26 +300,6 @@ def roundNumber(num) {
 }
 
 
-def getListIcon(type) {
-	def icons = [
-		lock: getTileIcons().lock.locked,
-		switch: getTileIcons().switch.on,
-		light: getTileIcons().light.on,
-		themeLight: getTileIcons().themeLight.on,
-		dimmer: getTileIcons().dimmer.on,
-		dimmerLight: getTileIcons().dimmerLight.on,
-		momentary: getTileIcons().momentary,
-		contact: getTileIcons().contact.open,
-		presence: getTileIcons().presence.present,
-		motion: getTileIcons().motion.active,
-		acceleration: getTileIcons().acceleration.active,
-		water: getTileIcons().water.wet,
-		alarm: getTileIcons().alarm.armed,
-		tileSeparator: "&nbsp;",
-	]
-	
-	icons[type] ?: getTileIcons()[type]
-}
 
 def getEventIcon(event) {
 	if (event.name == "level" && (event.deviceType == "dimmerLight" || event.deviceType == "dimmer")) return (getTileIcons()["light"]).on
@@ -179,85 +313,6 @@ def getEventIcon(event) {
 }
 
 
-/* Terry: Cursor type "grab/grabbing" not supported on various browsers, so override CSS here to "pointer". TODO: Write smarter CSS? */
-def renderListItem(data) {
-	if (data.type == "tileSeparator") {
-		return """<li class="item tile $data.type" data-type="$data.type" data-device="$data.device" id="$data.type|$data.device">Blank Tile<i class='active fa fa-fw fa-close st-blank-tile' style='float: right; cursor: pointer; padding: 4px 5px 10px 30px;'></i></li>"""
-	} else {
-		return """<li class="item tile $data.type" data-type="$data.type" data-device="$data.device" id="$data.type|$data.device" style='cursor: pointer;'>${getListIcon(data.type)}$data.name</li>"""
-	}
-}
-
-def renderEvent(data) {return """<li class="item tile $data.deviceType" data-name="$data.name" data-value="$data.value"><div class="event-icon">${getEventIcon(data)}</div><div class="event">$data.displayName &nbsp;<i class="fa fa-long-arrow-right"></i> $data.value${data.unit ?: ""}</div><div class="date">${formatDate(data.date)}</div></li>"""}
-
-def getDeviceData(device, type) {[tile: "device",  active: isActive(device, type), type: type, device: device.id, name: device.displayName, value: getDeviceValue(device, type), level: getDeviceLevel(device, type), isValue: isValue(device, type)]}
-
-def getDeviceFieldMap() {[lock: "lock", themeLight: "switch", light: "switch", "switch": "switch", dimmer: "switch", dimmerLight: "switch", contact: "contact", presence: "presence", temperature: "temperature", humidity: "humidity", luminosity: "illuminance", motion: "motion", acceleration: "acceleration", water: "water", power: "power", energy: "energy", battery: "battery"]}
-
-def getActiveDeviceMap() {[lock: "unlocked", themeLight: "on", light: "on", "switch": "on", dimmer: "on", dimmerLight: "on", contact: "open", presence: "present", motion: "active", acceleration: "active", water: "wet"]}
-
-def isValue(device, type) {!(["momentary", "camera"] << getActiveDeviceMap().keySet()).flatten().contains(type)}
-
-def isActive(device, type) {
-	try {
-	log_trace "isActive $device, $type"
-	def field = getDeviceFieldMap()[type]
-	def value = "n/a"
-	try {
-		value = device.respondsTo("currentValue") ? device.currentValue(field) : device.value
-	} catch (e) {
-		log_error "Device $device ($type) does not report $field properly. This is probably due to numerical value returned as text."
-	}
-	value == getActiveDeviceMap()[type] ? "active" : "inactive"
-	} catch (e) {
-		handleError(e, "isActive $device, $type");
-	}
-}
-
-def getDeviceValue(device, type) {
-	try {
-	log_trace "getDeviceValue $device, $type"
-	def unitMap = [temperature: "°", humidity: "%", luminosity: "lx", battery: "%", power: "W", energy: "kWh"]
-	def field = getDeviceFieldMap()[type]
-	def value = "n/a"
-	try {
-		value = device.respondsTo("currentValue") ? device.currentValue(field) : device.value
-	} catch (e) {
-		log_error "Device $device ($type) does not report $field properly. This is probably due to numerical value returned as text."
-	}
-	if (!isValue(device, type)) return value
-	else return "${roundNumber(value)}${unitMap[type] ?: ""}"
-	} catch (e) {
-		handleError(e, "getDeviceValue $device, $type");
-	}
-}
-
-def getDeviceLevel(device, type) {
-	log_trace "getDeviceLevel $device, $type"
-	if (type == "dimmer" || type == "dimmerLight" || type == "music") return "${(device.currentValue("level") ?: 0) / 10.0}".toDouble().round() ?: 1
-}
-
-def handler(e) {
-	try {
-		log_debug "event from: $e.displayName, value: $e.value, source: $e.source, description: $e.description"
-		updateStateTS()
-	} catch (ee) {
-		handleError(ee, "handler")
-	}
-}
-
-def updateStateTS() {
-	log_debug "updating TS"
-	state.ts = now()
-}
-
-def updateStateID() {
-	log_debug "updating stateID"
-	state.stateID = now()
-}
-
-def getStateTS() {state.ts ?: 0}
-def getStateID() {state.stateID ?: 0}
 
 
 def allDeviceData() {
@@ -383,107 +438,12 @@ def allDeviceData() {
 	}
 }
 
-def handleError(e, method) {
-	def error = [message: "\"Unexpected error. \"",
-		error: "\"$e\"", method: "\"${method}\""]
-	log.error(error)
-	error
-}
-
-def getEventsOfDevice(device) {
-	def today = new Date()
-	def then = timeToday(today.format("HH:mm"), TimeZone.getTimeZone('UTC')) - 1
-	device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[description: it.description, descriptionText: it.descriptionText, displayName: it.displayName, date: it.date, name: it.name, unit: it.unit, source: it.source, value: it.value]}
-}
-
-def filterEventsPerCapability(events, deviceType) {
-	log_trace "start filterEventsPerCapability"
-	def acceptableEventsPerCapability = [
-		light           : ["switch"],
-		dimmerLight     : ["switch", "level"],
-		switch          : ["switch"],
-		dimmer          : ["switch", "level"],
-		momentary       : ["switch"],
-		themeLight      : ["switch"],
-		thermostatHeat  : ["temperature", "heatingSetpoint", "thermostatFanMode", "thermostatOperatingState",],
-		thermostatCool  : ["temperature", "coolingSetpoint", "thermostatFanMode", "thermostatOperatingState",],
-		lock            : ["lock"],
-		music           : ["status", "level", "trackDescription", "mute"],
-		camera          : [],
-		presence        : ["presence"],
-		contact         : ["contact"],
-		motion          : ["motion"],
-		temperature     : ["temperature"],
-		humidity        : ["humidity"],
-		water           : ["water"],
-		battery         : ["battery"],
-		energy          : ["energy"],
-		power           : ["power"],
-		acceleration    : ["acceleration"],
-		luminosity      : ["illuminance"],
-		weather         : ["temperature", "weather"],
-	]
-	
-	if (events) events*.deviceType = deviceType
-	def result = events?.findAll{it.name in acceptableEventsPerCapability[deviceType]}
-	log_trace "end filterEventsPerCapability"
-	result
-}
-
-def getAllDeviceEvents() {
-	log_trace "start getAllDeviceEvents"
-
-	def eventsPerCapability = [
-		light           : lights                ?.collect{getEventsOfDevice(it)},
-		dimmerLight     : dimmerLights          ?.collect{getEventsOfDevice(it)},
-		switch          : switches              ?.collect{getEventsOfDevice(it)},
-		dimmer          : dimmers               ?.collect{getEventsOfDevice(it)},
-		momentary       : momentaries           ?.collect{getEventsOfDevice(it)},
-		themeLight      : themeLights           ?.collect{getEventsOfDevice(it)},
-		thermostatHeat  : thermostatsHeat       ?.collect{getEventsOfDevice(it)},
-		thermostatCool  : thermostatsCool       ?.collect{getEventsOfDevice(it)},
-		lock            : locks                 ?.collect{getEventsOfDevice(it)},
-		music           : music                 ?.collect{getEventsOfDevice(it)},
-		camera          : camera                ?.collect{getEventsOfDevice(it)},
-		presence        : presence              ?.collect{getEventsOfDevice(it)},
-		contact         : contacts              ?.collect{getEventsOfDevice(it)},
-		motion          : motion                ?.collect{getEventsOfDevice(it)},
-		temperature     : temperature           ?.collect{getEventsOfDevice(it)},
-		humidity        : humidity              ?.collect{getEventsOfDevice(it)},
-		water           : water                 ?.collect{getEventsOfDevice(it)},
-		battery         : battery               ?.collect{getEventsOfDevice(it)},
-		energy          : energy                ?.collect{getEventsOfDevice(it)},
-		power           : power                 ?.collect{getEventsOfDevice(it)},
-		acceleration    : acceleration          ?.collect{getEventsOfDevice(it)},
-		luminosity      : luminosity            ?.collect{getEventsOfDevice(it)},
-		weather         : weather               ?.collect{getEventsOfDevice(it)},
-	]
-	
-	def filteredEvents = [:]
-	
-	eventsPerCapability.each {deviceType, events ->
-		filteredEvents[deviceType] = filterEventsPerCapability(events?.flatten(), deviceType)
-	}
-	def result = filteredEvents.values()?.flatten()?.findAll{it}?.sort{"$it.date.time" + "$it.deviceType"}.reverse()
-	
-	log_trace "end getAllDeviceEvents"
-	
-	result 
-}
-
-def logLevels() {["Error", "Warn", "Info", "Debug", "Trace"]}
-
-def log_info(obj) {if (logLevels().indexOf(defaultPrefs("logLevel")) >= logLevels().indexOf("Info")) { log.info obj }}
-def log_error(obj) {if (logLevels().indexOf(defaultPrefs("logLevel")) >= logLevels().indexOf("Error")) { log.error obj }}
-def log_debug(obj) {if (logLevels().indexOf(defaultPrefs("logLevel")) >= logLevels().indexOf("Debug")) { log.debug obj }}
-def log_trace(obj) {if (logLevels().indexOf(defaultPrefs("logLevel")) >= logLevels().indexOf("Trace")) { log.trace obj }}
-
 
 def html() {
 	try {
 		checkin()
 		
-		render contentType: "text/html", data: "<!DOCTYPE html><html><head>${head()}${customCSS()} \n<style>${state.customCSS ?: ""}</style></head><body class='theme-${defaultPrefs("theme")}'>\n${renderTiles()}\n${renderWTFCloud()}${footer()}</body></html>"
+		render contentType: "text/html", data: "<!DOCTYPE html><html><head>${head()} \n<style>""</style></head><body>\n${footer()}</body></html>"
 	} catch (e) {
 		return handleError(e, "html")
 	}
@@ -500,9 +460,28 @@ def generateURLWithTokenOrRedirect(path) {
 	}
 }
 
-def renderTiles() {"""<div class="tiles">\n${allDeviceData()?.collect{renderTile(it)}.join("\n")}</div>"""}
 
-def renderWTFCloud() {"""<div data-role="popup" id="wtfcloud-popup" data-overlay-theme="b" class="wtfcloud"><div class="icon cloud" onclick="clearWTFCloud()"><i class="fa fa-cloud"></i></div><div class="icon message" onclick="clearWTFCloud()"><i class="fa fa-question"></i><i class="fa fa-exclamation"></i><i class='fa fa-refresh'></i></div></div>"""}
+
+def getListIcon(type) {
+	def icons = [
+		lock: getTileIcons().lock.locked,
+		switch: getTileIcons().switch.on,
+		light: getTileIcons().light.on,
+		themeLight: getTileIcons().themeLight.on,
+		dimmer: getTileIcons().dimmer.on,
+		dimmerLight: getTileIcons().dimmerLight.on,
+		momentary: getTileIcons().momentary,
+		contact: getTileIcons().contact.open,
+		presence: getTileIcons().presence.present,
+		motion: getTileIcons().motion.active,
+		acceleration: getTileIcons().acceleration.active,
+		water: getTileIcons().water.wet,
+		alarm: getTileIcons().alarm.armed,
+		tileSeparator: "&nbsp;",
+	]
+	
+	icons[type] ?: getTileIcons()[type]
+}
 
 
 def list() {render contentType: "text/html", data: """
@@ -606,24 +585,6 @@ def list() {render contentType: "text/html", data: """
 	</html>
 """
 }
-
-def historyNav() {
-"""
-<div style="" class="historyNav">
-<i class="fa fa-fw fa-arrow-left" onclick="location.replace('${generateURLWithTokenOrRedirect("back")}')"></i>
-<i class="fa fa-fw fa-refresh" onclick="this.className = this.className + ' fa-spin'; location.reload();"></i>
-<i class="fa fa-fw fa-chevron-up" onclick="window.scrollTo(0, 0);"></i>
-</div>
-"""
-}
-
-def history() {
-	if (!defaultPrefs("showHistory") || defaultPrefs("disableDashboard")) return ["history disabled"]
-	state.historyCount = (state.historyCount ?: 0) + 1
-	render contentType: "text/html", data: """<!DOCTYPE html><html><head>${headHistory()}${customCSS()} \n<style>${state.customCSS ?: ""}</style></head><body class='theme-${defaultPrefs("theme")}'>${historyNav()}<ul class="history-list list">\n${
-		getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n")}</ul></body></html>"""
-}
-
 
 
 /* =========== */
