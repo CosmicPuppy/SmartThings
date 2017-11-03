@@ -22,28 +22,111 @@ definition(
 	iconX3Url: "https://x.com/icons/saX3.png",
     oauth: true)
 
-{
-    appSetting "apiPath"
-    appSetting "apiKey"
-}
 
 
-preferences(oauthPage: "deviceAuthorization") {
-	page(name: "deviceAuthorization", install: true, uninstall: true) {
-		
-		section( "SmartApp can only access the specific Things that you authorize here \n" +
-				"\n[Version ${appVersion()}] \n"
-			 ) {
-			input "sensors", "capability.sensor", title:"1) Select any or all of your Things:", multiple: true, required: false
-			input "actuators", "capability.actuator", title:"2) Add any or all Things missing from the previous list (duplicates OK):", multiple: true, required: false
-			input "switches", "capability.switch", title:"3) Add any or all Things missing from the previous lists (duplicates OK):", multiple: true, required: false
-			input "batteries", "capability.battery", title:"4) If desired Things are not available in any above lists, try this list:", multiple: true, required: false
-			input "temperatures", "capability.temperatureMeasurement", title:"5) Or this final list:", multiple: true, required: false
+preferences {
+	page name: "mainPage"
+    
+    page(name: "controlThings", title: "Things", install: false) {
+		section("Control lights...") {
+			input "lights", "capability.switch", title: "Lights...", multiple: true, required: false, description : " "
+			input "dimmerLights", "capability.switchLevel", title: "Dimmable Lights...", multiple: true, required: false, description : " "
+			input "switches", "capability.switch", title: "Switches...", multiple: true, required: false, description : " "
+			input "dimmers", "capability.switchLevel", title: "Dimmable Switches...", multiple: true, required: false, description : " "
+			input "momentaries", "capability.momentary", title: "Momentary Switches...", multiple: true, required: false, description : " "
 		}
 		
-		remove("Uninstall", "Are you sure you want to uninstall?")
+		section("Control thermostats...") {
+			input "thermostatsHeat", "capability.thermostat", title: "Heating Thermostats...", multiple: true, required: false, description : " "
+			input "thermostatsCool", "capability.thermostat", title: "Cooling Thermostats...", multiple: true, required: false, description : " "
+		}
+		
+		section("Control things...") {
+			input "locks", "capability.lock", title: "Locks...", multiple: true, required: false, description : " "
+			input "music", "capability.musicPlayer", title: "Music Players...", multiple: true, required: false, description : " "
+			input "camera", "capability.imageCapture", title: "Cameras (Image Capture)...", multiple: true, required: false, description : " "
+		}
+		
+		section("View state of things...") {
+            input "presence", "capability.presenceSensor", title: "Presence Sensors...", multiple: true, required: false, description : " "
+            input "contacts", "capability.contactSensor", title: "Contact Sensors...", multiple: true, required: false, description : " "
+            input "motion", "capability.motionSensor", title: "Motion Sensors...", multiple: true, required: false, description : " "
+            input "temperature", "capability.temperatureMeasurement", title: "Temperature...", multiple: true, required: false, description : " "
+            input "humidity", "capability.relativeHumidityMeasurement", title: "Hygrometer...", multiple: true, required: false, description : " "
+            input "water", "capability.waterSensor", title: "Water Sensors...", multiple: true, required: false, description : " "
+            input "battery", "capability.battery", title: "Battery Status...", multiple: true, required: false, description : " "
+            input "energy", "capability.energyMeter", title: "Energy Meters...", multiple: true, required: false, description : " "
+            input "power", "capability.powerMeter", title: "Power Meters...", multiple: true, required: false, description : " "
+            input "acceleration", "capability.accelerationSensor", title: "Vibration Sensors...", multiple: true, required: false, description : " "
+            input "luminosity", "capability.illuminanceMeasurement", title: "Luminosity Sensors...", multiple: true, required: false, description : " "
+            input "weather", "device.smartweatherStationTile", title: "Weather...", multiple: true, required: false, description : " "
+        }
+		
+	}
+    
+    page name: "prefs"
+}
+
+def mainPage() {
+	dynamicPage(name: "mainPage", install: true, uninstall: true) {
+		section() {
+			label title: "Label", required: false, defaultValue: "Event Exporter"
+		}
+	
+		section() {
+			href "controlThings", title:"Things", description : " "
+		}
+
+		section() {
+			href "prefs", title: "Preferences", description : " "
+		}
 	}
 }
+
+
+def prefs() {
+	dynamicPage(name: "prefs", title: "Preferences", install: false) {
+		section() {
+			input "roundNumbers", title: "Round Off Decimals", "bool", required: true, defaultValue:true
+		}
+		
+		section("Debugging Options") {
+			input "logLevel", title: "Log Level", "enum", multiple: false, required: true, defaultValue: "Debug", options: ["Error", "Warn", "Info", "Debug", "Trace"]
+		}
+	}
+}
+
+/*
+def defaultPrefs(name) {
+	if (settings?.containsKey(name)) {
+		if (settings[name] == "false") return false
+		return settings[name]
+	}
+	
+	def defaults = [
+		showSHM			: false,
+		showMode		: true,
+		showHelloHome 	: true,
+		showRefresh 	: true,
+		showHistory 	: true,
+		showClock 		: "Small Digital",
+		clockFormat		: "12 Hour Clock",
+		theme		 	: "default",
+		tileSize 		: "Medium",
+		videoTileSize	: "Small",
+		fontSize	 	: "Normal",
+		roundNumbers 	: true,
+		themeLightType 	: "Default",
+		pollingRate		: 30,
+		smvRate			: 5,
+		logLevel		: "Debug"
+	]
+	
+	defaults[name]
+}
+*/
+
+//----------------------------------------------------
 
 def logLevels() {["Error", "Warn", "Info", "Debug", "Trace"]}
 def log_info(obj)  {if (1 >= logLevels().indexOf("Info")) { log.info obj }}
@@ -64,7 +147,7 @@ def updated() {
 
 def initialize() {
 	log.info "Initializing the SmartApp"
-	history();
+	subscribe(app, onAppTouch)
 	[status: "ok"]
 }
 
@@ -72,6 +155,11 @@ def uninstalled() {
 	log.info "Uninstalling the SmartApp"
 	revokeAccessToken()
 }	
+
+def onAppTouch(evt) {
+	log.debug "appTouch with Event: $evt"
+	history();
+}
 
 
 def handleError(e, method) {
@@ -84,8 +172,29 @@ def handleError(e, method) {
 def getEventsOfDevice(device) {
 	def today = new Date()
 	def then = timeToday(today.format("HH:mm"), TimeZone.getTimeZone('UTC')) - 1
-	device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[description: it.description, descriptionText: it.descriptionText, displayName: it.displayName, date: it.date, name: it.name, unit: it.unit, source: it.source, value: it.value]}
+	
+	/* Alternative: http://docs.smartthings.com/en/latest/ref-docs/device-ref.html#eventssince */
+	device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[
+		description: it.description,
+		descriptionText: it.descriptionText,
+		displayName: it.displayName,
+		date: it.date,
+		name: it.name,
+		unit: it.unit,
+		source: it.source,
+		value: it.value,
+		isDigital: it.isDigital(),
+		isPhysical: it.isPhysical(),
+		isStateChange: it.isStateChange()
+	]}
 }
+
+def renderEvent(data) {
+	//return "$data.deviceType, $data.name, $data.value, $data.displayName, $data.value, ${data.unit ?: ""}, ${formatDate(data.date)}"
+	return "$data"
+}
+
+
 
 def filterEventsPerCapability(events, deviceType) {
 	log_trace "start filterEventsPerCapability"
@@ -206,15 +315,19 @@ def historyNav() {
 """
 }
 
+
 def history() {
 	// render contentType: "text/html", data: """<!DOCTYPE html><html><head>${headHistory()} \n<style>""</style></head><body>${historyNav()}<ul class="history-list list">\n${getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n")}</ul></body></html>"""
-	log.debug ${getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n")}
+	//log.debug "${getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n")}"
+	
+	log.debug "History loop of log.debugs Commented out."
+	//getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n").each {
+	//	log.debug "${it}"
+	//}
 }
 
 
 
-
-def renderEvent(data) {return """<li class="item tile $data.deviceType" data-name="$data.name" data-value="$data.value"><div class="event-icon">${getEventIcon(data)}</div><div class="event">$data.displayName &nbsp;<i class="fa fa-long-arrow-right"></i> $data.value${data.unit ?: ""}</div><div class="date">${formatDate(data.date)}</div></li>"""}
 
 def getDeviceData(device, type) {[tile: "device",  active: isActive(device, type), type: type, device: device.id, name: device.displayName, value: getDeviceValue(device, type), level: getDeviceLevel(device, type), isValue: isValue(device, type)]}
 
