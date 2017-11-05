@@ -1,4 +1,4 @@
-def appVersion()  {"1.0.1"}     // Major.Minor.Hotfix (Official releases and pre-releases).
+def appVersion()  {"1.0.2"}     // Major.Minor.Hotfix (Official releases and pre-releases).
 /**
  *  Event Exporter
  *
@@ -127,10 +127,10 @@ def defaultPrefs(name) {
 //----------------------------------------------------
 
 def logLevels() {["Error", "Warn", "Info", "Debug", "Trace"]}
-def log_info(obj)  {if (0 >= logLevels().indexOf("Info")) { log.info obj }}
+def log_info(obj)  {if (9 >= logLevels().indexOf("Info")) { log.info obj }}
 def log_error(obj) {if (9 >= logLevels().indexOf("Error")) { log.error obj }}
-def log_debug(obj) {if (9 >= logLevels().indexOf("Debug")) { log.debug obj }}
-def log_trace(obj) {if (0 >= logLevels().indexOf("Trace")) { log.trace obj }}
+def log_debug(obj) {if (0 >= logLevels().indexOf("Debug")) { log.debug obj }}
+def log_trace(obj) {if (9 >= logLevels().indexOf("Trace")) { log.trace obj }}
 
 
 def installed() {
@@ -167,18 +167,9 @@ def handleError(e, method) {
 	error
 }
 
-def getEventsOfDevice(device) {
-	//Unneccessarily complex! def then = timeToday(today.format("HH:mm"), TimeZone.getTimeZone('UTC')) - 1
+def getEventsOfDevice(device,start,end) {
 	
-	def today = new Date()
-	def start = new Date()
-	def end = new Date()
-	
-	def ago = 0
-	end = today - ago
-	start = end - 1
-	
-	log.trace "Start: ${start}; End: ${end}"
+	log_trace "getEventsOfDevice: ${device}; Start: ${start}; End: ${end}"
 	
 	/* Alternative: http://docs.smartthings.com/en/latest/ref-docs/device-ref.html#eventssince */
     //def result = device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[
@@ -198,8 +189,8 @@ def getEventsOfDevice(device) {
 		isStateChange: it.isStateChange()
 	]}
 	
-    //log.trace "Events of Device: ${result}"
-    result.each { log.info "EVENT: ${it}" }
+    //log_trace "Events of Device: ${result}"
+    result.each { log_info "EVENT: ${it}" }
     
     result
 }
@@ -212,7 +203,6 @@ def renderEvent(data) {
 
 
 def filterEventsPerCapability(events, deviceType) {
-	log_trace "start filterEventsPerCapability"
 	def acceptableEventsPerCapability = [
 		switch          : ["switch"],
 		dimmer          : ["switch", "level"],
@@ -238,46 +228,60 @@ def filterEventsPerCapability(events, deviceType) {
 	
 	if (events) events*.deviceType = deviceType
 	def result = events?.findAll{it.name in acceptableEventsPerCapability[deviceType]}
-	log_trace "end filterEventsPerCapability"
 	result
 }
 
-def getAllDeviceEvents() {
-	log_trace "start getAllDeviceEvents"
+def getAllDeviceEvents(data) {
+	int ago = data.ago
+	//log_trace "start getAllDeviceEvents: $data"
+	
+	def todayUnix = data.todayUnix
+	def today = new Date(todayUnix)
+	def start = new Date()
+	def end = new Date()
+	
+	end = today - ago
+	start = end - 1
 
 	def eventsPerCapability = [
-		switch          : switches              ?.collect{getEventsOfDevice(it)},
-		dimmer          : dimmers               ?.collect{getEventsOfDevice(it)},
-		momentary       : momentaries           ?.collect{getEventsOfDevice(it)},
-		thermostatHeat  : thermostatsHeat       ?.collect{getEventsOfDevice(it)},
-		thermostatCool  : thermostatsCool       ?.collect{getEventsOfDevice(it)},
-		lock            : locks                 ?.collect{getEventsOfDevice(it)},
-		music           : music                 ?.collect{getEventsOfDevice(it)},
-		camera          : camera                ?.collect{getEventsOfDevice(it)},
-		presence        : presence              ?.collect{getEventsOfDevice(it)},
-		contact         : contacts              ?.collect{getEventsOfDevice(it)},
-		motion          : motion                ?.collect{getEventsOfDevice(it)},
-		temperature     : temperature           ?.collect{getEventsOfDevice(it)},
-		humidity        : humidity              ?.collect{getEventsOfDevice(it)},
-		water           : water                 ?.collect{getEventsOfDevice(it)},
-		battery         : battery               ?.collect{getEventsOfDevice(it)},
-		energy          : energy                ?.collect{getEventsOfDevice(it)},
-		power           : power                 ?.collect{getEventsOfDevice(it)},
-		acceleration    : acceleration          ?.collect{getEventsOfDevice(it)},
-		luminosity      : luminosity            ?.collect{getEventsOfDevice(it)},
-		weather         : weather               ?.collect{getEventsOfDevice(it)},
+		switch          : switches              ?.collect{getEventsOfDevice(it,start,end)},
+		dimmer          : dimmers               ?.collect{getEventsOfDevice(it,start,end)},
+		momentary       : momentaries           ?.collect{getEventsOfDevice(it,start,end)},
+		thermostatHeat  : thermostatsHeat       ?.collect{getEventsOfDevice(it,start,end)},
+		thermostatCool  : thermostatsCool       ?.collect{getEventsOfDevice(it,start,end)},
+		lock            : locks                 ?.collect{getEventsOfDevice(it,start,end)},
+		music           : music                 ?.collect{getEventsOfDevice(it,start,end)},
+		camera          : camera                ?.collect{getEventsOfDevice(it,start,end)},
+		presence        : presence              ?.collect{getEventsOfDevice(it,start,end)},
+		contact         : contacts              ?.collect{getEventsOfDevice(it,start,end)},
+		motion          : motion                ?.collect{getEventsOfDevice(it,start,end)},
+		temperature     : temperature           ?.collect{getEventsOfDevice(it,start,end)},
+		humidity        : humidity              ?.collect{getEventsOfDevice(it,start,end)},
+		water           : water                 ?.collect{getEventsOfDevice(it,start,end)},
+		battery         : battery               ?.collect{getEventsOfDevice(it,start,end)},
+		energy          : energy                ?.collect{getEventsOfDevice(it,start,end)},
+		power           : power                 ?.collect{getEventsOfDevice(it,start,end)},
+		acceleration    : acceleration          ?.collect{getEventsOfDevice(it,start,end)},
+		luminosity      : luminosity            ?.collect{getEventsOfDevice(it,start,end)},
+		weather         : weather               ?.collect{getEventsOfDevice(it,start,end)},
 	]
 	
 	def filteredEvents = [:]
 	
 	eventsPerCapability.each {deviceType, events ->
 		filteredEvents[deviceType] = filterEventsPerCapability(events?.flatten(), deviceType)
-        //log.trace "Event: ${filterEventsPerCapability(events?.flatten(), deviceType)}"
+        //log_trace "Event: ${filterEventsPerCapability(events?.flatten(), deviceType)}"
 	}
 
 	def result = filteredEvents.values()?.flatten()?.findAll{it}?.sort{"$it.date.time" + "$it.deviceType"}.reverse()
 	
-	//log.trace "end getAllDeviceEvents ${result}"
+	ago = ago + 1;
+	if ( ago < 7 ) {
+		log_trace "Calling getAll: ago = ${ago}."
+		runIn(2, "getAllDeviceEvents", [data: [ago: ago, todayUnix: todayUnix]])
+	} else {
+		log_trace "No more calls: ago = ${ago}."
+	}
 	
 	result 
 }
@@ -315,7 +319,7 @@ def headHistory() {
 }
 
 
-
+/*
 def historyNav() {
 """
 <div style="" class="historyNav">
@@ -325,13 +329,20 @@ def historyNav() {
 </div>
 """
 }
-
+*/
 
 def history() {
-	log.debug "History..."
+	log_debug "History..."
+
 	// render contentType: "text/html", data: """<!DOCTYPE html><html><head>${headHistory()} \n<style>""</style></head><body>${historyNav()}<ul class="history-list list">\n${getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n")}</ul></body></html>"""
-    getAllDeviceEvents()
 	//log.debug "${getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n")}"
+	
+	/* TODO: Could be an input parameter. Assume starting immediately today and going back 7 days. */
+    def ago = 0
+	def todayUnix = new Date().getTime();
+	
+    log_debug "calling getAll"
+    runIn(2, "getAllDeviceEvents", [data: [ago: ago, todayUnix: todayUnix]])
 }
 
 
