@@ -1,4 +1,4 @@
-def appVersion()  {"1.0.0"}     // Major.Minor.Hotfix (Official releases and pre-releases).
+def appVersion()  {"1.0.1"}     // Major.Minor.Hotfix (Official releases and pre-releases).
 /**
  *  Event Exporter
  *
@@ -29,8 +29,6 @@ preferences {
     
     page(name: "controlThings", title: "Things", install: false) {
 		section("Control lights...") {
-			input "lights", "capability.switch", title: "Lights...", multiple: true, required: false, description : " "
-			input "dimmerLights", "capability.switchLevel", title: "Dimmable Lights...", multiple: true, required: false, description : " "
 			input "switches", "capability.switch", title: "Switches...", multiple: true, required: false, description : " "
 			input "dimmers", "capability.switchLevel", title: "Dimmable Switches...", multiple: true, required: false, description : " "
 			input "momentaries", "capability.momentary", title: "Momentary Switches...", multiple: true, required: false, description : " "
@@ -129,10 +127,10 @@ def defaultPrefs(name) {
 //----------------------------------------------------
 
 def logLevels() {["Error", "Warn", "Info", "Debug", "Trace"]}
-def log_info(obj)  {if (1 >= logLevels().indexOf("Info")) { log.info obj }}
-def log_error(obj) {if (1 >= logLevels().indexOf("Error")) { log.error obj }}
-def log_debug(obj) {if (1 >= logLevels().indexOf("Debug")) { log.debug obj }}
-def log_trace(obj) {if (1 >= logLevels().indexOf("Trace")) { log.trace obj }}
+def log_info(obj)  {if (0 >= logLevels().indexOf("Info")) { log.info obj }}
+def log_error(obj) {if (9 >= logLevels().indexOf("Error")) { log.error obj }}
+def log_debug(obj) {if (9 >= logLevels().indexOf("Debug")) { log.debug obj }}
+def log_trace(obj) {if (0 >= logLevels().indexOf("Trace")) { log.trace obj }}
 
 
 def installed() {
@@ -170,16 +168,28 @@ def handleError(e, method) {
 }
 
 def getEventsOfDevice(device) {
+	//Unneccessarily complex! def then = timeToday(today.format("HH:mm"), TimeZone.getTimeZone('UTC')) - 1
+	
 	def today = new Date()
-	def then = timeToday(today.format("HH:mm"), TimeZone.getTimeZone('UTC')) - 1
+	def start = new Date()
+	def end = new Date()
+	
+	def ago = 0
+	end = today - ago
+	start = end - 1
+	
+	log.trace "Start: ${start}; End: ${end}"
 	
 	/* Alternative: http://docs.smartthings.com/en/latest/ref-docs/device-ref.html#eventssince */
-	device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[
+    //def result = device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[
+	
+	def result = device.eventsBetween(start, end)?.collect{[
+        date: it.date,
+		deviceID: it.deviceId,
+		name: it.name,
+        displayName: it.displayName,
 		description: it.description,
 		descriptionText: it.descriptionText,
-		displayName: it.displayName,
-		date: it.date,
-		name: it.name,
 		unit: it.unit,
 		source: it.source,
 		value: it.value,
@@ -187,6 +197,11 @@ def getEventsOfDevice(device) {
 		isPhysical: it.isPhysical(),
 		isStateChange: it.isStateChange()
 	]}
+	
+    //log.trace "Events of Device: ${result}"
+    result.each { log.info "EVENT: ${it}" }
+    
+    result
 }
 
 def renderEvent(data) {
@@ -199,12 +214,9 @@ def renderEvent(data) {
 def filterEventsPerCapability(events, deviceType) {
 	log_trace "start filterEventsPerCapability"
 	def acceptableEventsPerCapability = [
-		light           : ["switch"],
-		dimmerLight     : ["switch", "level"],
 		switch          : ["switch"],
 		dimmer          : ["switch", "level"],
 		momentary       : ["switch"],
-		themeLight      : ["switch"],
 		thermostatHeat  : ["temperature", "heatingSetpoint", "thermostatFanMode", "thermostatOperatingState",],
 		thermostatCool  : ["temperature", "coolingSetpoint", "thermostatFanMode", "thermostatOperatingState",],
 		lock            : ["lock"],
@@ -234,12 +246,9 @@ def getAllDeviceEvents() {
 	log_trace "start getAllDeviceEvents"
 
 	def eventsPerCapability = [
-		light           : lights                ?.collect{getEventsOfDevice(it)},
-		dimmerLight     : dimmerLights          ?.collect{getEventsOfDevice(it)},
 		switch          : switches              ?.collect{getEventsOfDevice(it)},
 		dimmer          : dimmers               ?.collect{getEventsOfDevice(it)},
 		momentary       : momentaries           ?.collect{getEventsOfDevice(it)},
-		themeLight      : themeLights           ?.collect{getEventsOfDevice(it)},
 		thermostatHeat  : thermostatsHeat       ?.collect{getEventsOfDevice(it)},
 		thermostatCool  : thermostatsCool       ?.collect{getEventsOfDevice(it)},
 		lock            : locks                 ?.collect{getEventsOfDevice(it)},
@@ -263,10 +272,12 @@ def getAllDeviceEvents() {
 	
 	eventsPerCapability.each {deviceType, events ->
 		filteredEvents[deviceType] = filterEventsPerCapability(events?.flatten(), deviceType)
+        //log.trace "Event: ${filterEventsPerCapability(events?.flatten(), deviceType)}"
 	}
+
 	def result = filteredEvents.values()?.flatten()?.findAll{it}?.sort{"$it.date.time" + "$it.deviceType"}.reverse()
 	
-	log_trace "end getAllDeviceEvents"
+	//log.trace "end getAllDeviceEvents ${result}"
 	
 	result 
 }
@@ -317,13 +328,10 @@ def historyNav() {
 
 
 def history() {
+	log.debug "History..."
 	// render contentType: "text/html", data: """<!DOCTYPE html><html><head>${headHistory()} \n<style>""</style></head><body>${historyNav()}<ul class="history-list list">\n${getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n")}</ul></body></html>"""
+    getAllDeviceEvents()
 	//log.debug "${getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n")}"
-	
-	log.debug "History loop of log.debugs Commented out."
-	//getAllDeviceEvents()?.collect{renderEvent(it)}.join("\n").each {
-	//	log.debug "${it}"
-	//}
 }
 
 
@@ -331,9 +339,9 @@ def history() {
 
 def getDeviceData(device, type) {[tile: "device",  active: isActive(device, type), type: type, device: device.id, name: device.displayName, value: getDeviceValue(device, type), level: getDeviceLevel(device, type), isValue: isValue(device, type)]}
 
-def getDeviceFieldMap() {[lock: "lock", themeLight: "switch", light: "switch", "switch": "switch", dimmer: "switch", dimmerLight: "switch", contact: "contact", presence: "presence", temperature: "temperature", humidity: "humidity", luminosity: "illuminance", motion: "motion", acceleration: "acceleration", water: "water", power: "power", energy: "energy", battery: "battery"]}
+def getDeviceFieldMap() {[lock: "lock", "switch": "switch", dimmer: "switch", contact: "contact", presence: "presence", temperature: "temperature", humidity: "humidity", luminosity: "illuminance", motion: "motion", acceleration: "acceleration", water: "water", power: "power", energy: "energy", battery: "battery"]}
 
-def getActiveDeviceMap() {[lock: "unlocked", themeLight: "on", light: "on", "switch": "on", dimmer: "on", dimmerLight: "on", contact: "open", presence: "present", motion: "active", acceleration: "active", water: "wet"]}
+//def getActiveDeviceMap() {[lock: "unlocked", themeLight: "on", light: "on", "switch": "on", dimmer: "on", dimmerLight: "on", contact: "open", presence: "present", motion: "active", acceleration: "active", water: "wet"]}
 
 def isValue(device, type) {!(["momentary", "camera"] << getActiveDeviceMap().keySet()).flatten().contains(type)}
 
@@ -413,7 +421,7 @@ def roundNumber(num) {
 }
 
 
-
+/*
 def getEventIcon(event) {
 	if (event.name == "level" && (event.deviceType == "dimmerLight" || event.deviceType == "dimmer")) return (getTileIcons()["light"]).on
 	def eventValues = getTileIcons()[event.deviceType]
@@ -424,6 +432,7 @@ def getEventIcon(event) {
 	
 	eventValues[event.value] ?: getTileIcons()["?"]
 }
+*/
 
 
 
@@ -480,10 +489,6 @@ def allDeviceData() {
 	log_trace "allDeviceData collected MusicPlayerData"
 	switches?.each{data << getDeviceData(it, "switch")}
 	log_trace "allDeviceData collected switches"
-	lights?.each{data << getDeviceData(it, "light")}
-	log_trace "allDeviceData collected lights"
-	themeLights?.each{data << getDeviceData(it, "themeLight")}
-	log_trace "allDeviceData collected themeLights"
 	dimmers?.each{data << getDeviceData(it, "dimmer")}
 	log_trace "allDeviceData collected dimmers"
 	dimmerLights?.each{data << getDeviceData(it, "dimmerLight")}
@@ -574,15 +579,13 @@ def generateURLWithTokenOrRedirect(path) {
 }
 
 
-
+/*
 def getListIcon(type) {
 	def icons = [
 		lock: getTileIcons().lock.locked,
 		switch: getTileIcons().switch.on,
 		light: getTileIcons().light.on,
-		themeLight: getTileIcons().themeLight.on,
 		dimmer: getTileIcons().dimmer.on,
-		dimmerLight: getTileIcons().dimmerLight.on,
 		momentary: getTileIcons().momentary,
 		contact: getTileIcons().contact.open,
 		presence: getTileIcons().presence.present,
@@ -595,6 +598,7 @@ def getListIcon(type) {
 	
 	icons[type] ?: getTileIcons()[type]
 }
+*/
 
 
 def list() {render contentType: "text/html", data: """
