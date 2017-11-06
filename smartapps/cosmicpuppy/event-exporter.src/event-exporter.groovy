@@ -1,4 +1,4 @@
-def appVersion()  {"1.0.3"}     // Major.Minor.Hotfix (Official releases and pre-releases).
+def appVersion()  {"1.0.4"}     // Major.Minor.Hotfix (Official releases and pre-releases).
 
 /* ID: jgstexport.sa */
 def dataServerUrl() {"https://jgstexport.firebaseio.com/"}
@@ -162,13 +162,16 @@ def escapeUTF8(string) {
 }
 
 def sendToFB(data) {
-	def uri = "${getSanitizedFBUri()}/${settings.exportId}.json?print=silent&auth=${dataAuthToken()}"
+	def uri = "${getSanitizedFBUri()}/${state.exportId}.json?print=silent&auth=${dataAuthToken()}"
+	log_trace "URI: ${uri}"
 	
 	def map = [
 		uri: "$uri",
 		//body: ["x": "y"],
-		body: data,
-		headers : ["x-http-method-override" : "PATCH"]
+		//body: data,
+		body: [ ".sv": "timestamp" : data ],
+		//headers : ["x-http-method-override" : "POST"] // Use this to auto generate sequence keys
+		headers : ["x-http-method-override" : "PUT"] // Use this to auto generate sequence keys
 	]
 
 	try {
@@ -239,24 +242,52 @@ def getEventsOfDevice(device,start,end) {
 	
 	/* Alternative: http://docs.smartthings.com/en/latest/ref-docs/device-ref.html#eventssince */
     //def result = device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[
-	
+
+	/*
 	def result = device.eventsBetween(start, end)?.collect{[
-        date: it.date,
-		deviceID: it.deviceId,
-		name: it.name,
-        displayName: it.displayName,
-		description: it.description,
-		descriptionText: it.descriptionText,
-		unit: it.unit,
-		source: it.source,
-		value: it.value,
-		isDigital: it.isDigital(),
-		isPhysical: it.isPhysical(),
-		isStateChange: it.isStateChange()
+		"time" : timestamp,
+        "date": it.date,
+		"deviceID": it.deviceId,
+		"name": it.name,
+        "displayName": it.displayName
+		//description: it.description,
+		//descriptionText: it.descriptionText,
+		//unit: it.unit,
+		//source: it.source,
+		//value: it.value,
+		//isDigital: it.isDigital(),
+		//isPhysical: it.isPhysical(),
+		///isStateChange: it.isStateChange()
 	]}
+	*/
 	
-    //log_trace "Events of Device: ${result}"
-    result.each { log_info "EVENT: ${it}"; sendToFB( ${it.to} ) }
+	def jsonOutput = new groovy.json.JsonOutput()
+	def result = device.eventsBetween(start, end)?.collect{[
+		//"time" : "timestamp",
+        "date": formatDate(it.date),
+		"deviceID": it.deviceId,
+		"name": it.name,
+        "displayName": it.displayName
+		//description: it.description,
+		//descriptionText: it.descriptionText,
+		//unit: it.unit,
+		//source: it.source,
+		//value: it.value,
+		//isDigital: it.isDigital(),
+		//isPhysical: it.isPhysical(),
+		///isStateChange: it.isStateChange()
+	]}
+
+	def myData = []
+    log_trace "Events of Device: ${result}"
+    //result.each { log_info "EVENT: ${it}" }
+	result.each {
+		myData = it
+		log_trace "Sending: ${myData}"
+		sendToFB( myData )
+	}
+	
+	return
     
     result
 }
@@ -406,13 +437,19 @@ def history() {
 	/* TODO: Could be an input parameter. Assume starting immediately today and going back 7 days. */
     def ago = 0
 	def todayUnix = new Date().getTime();
-	settings.exportId = getExportId();
+	state.exportId = getExportId();
 	
-	log_trace "Formatted date is ${settings.exportId}"
+	log_trace "Formatted date is ${state.exportId}"
 	/* Sample format: def data = ["time" : timestamp, "server": server, id : ["instanceID" : ago ] ] */
 	
-	//sendToFB(data)
-	//return
+	/* Sample Event record under a timeStamp.
+	def timeStamp = new Date().getTime();
+	def data = ["${timeStamp}" : ["date":"2017-11-05T17:28:34+0000",
+		"deviceID":"eedb429d-69c1-441f-a69f-a8865df889fa","name":"lock","displayName":"Lock Back Door"]
+	]
+	sendToFB(data)
+	return
+	*/
 	
     log_debug "calling getAll"
     runIn(2, "getAllDeviceEvents", [data: [ago: ago, todayUnix: todayUnix]])
@@ -463,7 +500,7 @@ def handler(e) {
 }
 
 def getExportId() {
-	def ei = new java.text.SimpleDateFormat("yyyymmdd-hhmmss")
+	def ei = new java.text.SimpleDateFormat("yyyyMMdd-hhmmss")
     //if (location?.timeZone) tf.setTimeZone(location.timeZone)
     "${ei.format(new Date())}"
 }
@@ -482,8 +519,9 @@ def getDate() {
 }
 
 def formatDate(date) {
-	def tf = new java.text.SimpleDateFormat("h:mm:ss a, dd MMMMM")
-    if (location?.timeZone) tf.setTimeZone(location.timeZone)
+	//def tf = new java.text.SimpleDateFormat("h:mm:ss a, dd MMMMM")
+    //if (location?.timeZone) tf.setTimeZone(location.timeZone)
+	def tf = new java.text.SimpleDateFormat("YYYY-MM-dd hh:mm:ss")
     return tf.format(date)
 }
 
