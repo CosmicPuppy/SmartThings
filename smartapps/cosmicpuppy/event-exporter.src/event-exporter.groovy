@@ -1,4 +1,4 @@
-def appVersion()  {"1.0.4"}     // Major.Minor.Hotfix (Official releases and pre-releases).
+def appVersion()  {"1.0.5"}     // Major.Minor.Hotfix (Official releases and pre-releases).
 
 /* ID: jgstexport.sa */
 def dataServerUrl() {"https://jgstexport.firebaseio.com/"}
@@ -161,43 +161,52 @@ def escapeUTF8(string) {
     return string
 }
 
+
+/* sendToFB NEW */
 def sendToFB(data) {
-	def uri = "${getSanitizedFBUri()}/${state.exportId}.json?print=silent&auth=${dataAuthToken()}"
-	log_trace "URI: ${uri}"
+	def uri = "${getSanitizedFBUri()}/JOB-${state.exportId}/${getTimestamp()}.json"
+	
+	def map = [
+		uri: "$uri",
+		query: [
+			print:	"silent",
+			auth:	dataAuthToken()
+		],
+		//body: ["x": "y"],
+		body: data,
+		//headers : ["x-http-method-override" : "POST"] // Use this to auto generate sequence keys
+		headers : ["x-http-method-override" : "PUT"] // Use this with manually generated sequence keys
+	]
+
+	try {
+		log.debug "sending data to FireBase"
+		//httpPutJson(map) {}
+		asynchttp_v1.put(null, map)
+	} catch (e) {
+		log.error ("error writing to database. $e")
+	}
+} /* sendToFB NEW */
+
+/* sendToFB OLD */
+def OLDsendToFB(data) {
+	def uri = "${getSanitizedFBUri()}/JOB-${state.exportId}/${getTimestamp()}.json?print=silent&auth=${dataAuthToken()}"
 	
 	def map = [
 		uri: "$uri",
 		//body: ["x": "y"],
-		//body: data,
-		body: [ ".sv": "timestamp" : data ],
+		body: data,
 		//headers : ["x-http-method-override" : "POST"] // Use this to auto generate sequence keys
-		headers : ["x-http-method-override" : "PUT"] // Use this to auto generate sequence keys
+		headers : ["x-http-method-override" : "PUT"] // Use this with manually generated sequence keys
 	]
 
 	try {
-		log.debug "sending $data to FireBase; old method"
+		log.debug "sending $data to FireBase:"
 		httpPostJson(map) {}
 	} catch (e) {
 		log.error ("error writing to database. $e")
 	}
 		
-	return
-	
-	try {
-		def params = [
-			uri: "${getSanitizedFBUri()}/.json", 
-			query: [
-				print:	"silent",
-				auth:	"$dataAuthToken()"
-			],
-			body: data
-		]
-		log.debug "sending data to FireBase"
-		asynchttp_v1.patch(null, params)
-	} catch (e) {
-		log.error ("error writing to database. $e")
-	}
-}
+} /* sendToFB OLD */
 
 //-----------------------------------------------------
 
@@ -263,32 +272,29 @@ def getEventsOfDevice(device,start,end) {
 	
 	def jsonOutput = new groovy.json.JsonOutput()
 	def result = device.eventsBetween(start, end)?.collect{[
-		//"time" : "timestamp",
         "date": formatDate(it.date),
 		"deviceID": it.deviceId,
 		"name": it.name,
-        "displayName": it.displayName
-		//description: it.description,
-		//descriptionText: it.descriptionText,
-		//unit: it.unit,
-		//source: it.source,
-		//value: it.value,
-		//isDigital: it.isDigital(),
-		//isPhysical: it.isPhysical(),
-		///isStateChange: it.isStateChange()
+        "displayName": it.displayName,
+		"description": it.description,
+		"descriptionText": it.descriptionText,
+		"unit": it.unit,
+		"source": it.source,
+		"value": it.value,
+		"isDigital": it.isDigital(),
+		"isPhysical": it.isPhysical(),
+		"isStateChange": it.isStateChange()
 	]}
 
 	def myData = []
-    log_trace "Events of Device: ${result}"
+    //log_trace "Events of Device: ${result}"
     //result.each { log_info "EVENT: ${it}" }
 	result.each {
 		myData = it
-		log_trace "Sending: ${myData}"
+		//log_trace "Sending: ${myData}"
 		sendToFB( myData )
 	}
 	
-	return
-    
     result
 }
 
@@ -362,7 +368,8 @@ def getAllDeviceEvents(data) {
 		luminosity      : luminosity            ?.collect{getEventsOfDevice(it,start,end)},
 		weather         : weather               ?.collect{getEventsOfDevice(it,start,end)},
 	]
-	
+
+	/*
 	def filteredEvents = [:]
 	
 	eventsPerCapability.each {deviceType, events ->
@@ -371,9 +378,11 @@ def getAllDeviceEvents(data) {
 	}
 
 	def result = filteredEvents.values()?.flatten()?.findAll{it}?.sort{"$it.date.time" + "$it.deviceType"}.reverse()
+	*/
 	
 	ago = ago + 1;
-	if ( ago < 7 ) {
+	// TODO: should be 7
+	if ( ago < 1 ) {
 		log_trace "Calling getAll: ago = ${ago}."
 		runIn(2, "getAllDeviceEvents", [data: [ago: ago, todayUnix: todayUnix]])
 	} else {
@@ -415,18 +424,6 @@ def headHistory() {
 """
 }
 
-
-/*
-def historyNav() {
-"""
-<div style="" class="historyNav">
-<i class="fa fa-fw fa-arrow-left" onclick="location.replace('${generateURLWithTokenOrRedirect("back")}')"></i>
-<i class="fa fa-fw fa-refresh" onclick="this.className = this.className + ' fa-spin'; location.reload();"></i>
-<i class="fa fa-fw fa-chevron-up" onclick="window.scrollTo(0, 0);"></i>
-</div>
-"""
-}
-*/
 
 def history() {
 	log_debug "History..."
@@ -505,6 +502,11 @@ def getExportId() {
     "${ei.format(new Date())}"
 }
 
+def getTimestamp() {
+	def ei = new java.text.SimpleDateFormat("yyyyMMdd-hhmmss_SSS")
+    //if (location?.timeZone) tf.setTimeZone(location.timeZone)
+    "${ei.format(new Date())}"
+}
 
 def getTS() {
 	def tf = new java.text.SimpleDateFormat("h:mm a")
