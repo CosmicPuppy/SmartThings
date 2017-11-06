@@ -1,4 +1,10 @@
-def appVersion()  {"1.0.2"}     // Major.Minor.Hotfix (Official releases and pre-releases).
+def appVersion()  {"1.0.3"}     // Major.Minor.Hotfix (Official releases and pre-releases).
+
+/* ID: jgstexport.sa */
+def dataServerUrl() {"https://jgstexport.firebaseio.com/"}
+def dataAuthToken() {"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjg2NTUwOTg2NzgzMiwidiI6MCwiZCI6eyJ1aWQiOiJqZ3N0ZXhwb3J0LnNhIn0sImlhdCI6MTUwOTk1NDIzMn0.eLTgQ70PwJmHHmwyXm-HD6hjbH0FsfqXaR0xJ1P0pHE"}
+
+
 /**
  *  Event Exporter
  *
@@ -9,7 +15,9 @@ def appVersion()  {"1.0.2"}     // Major.Minor.Hotfix (Official releases and pre
  *  Copyright © 2017 Terry Gauchat
  */
 
-//include 'asynchttp_v1'
+include 'asynchttp_v1'
+import java.text.DateFormat
+import java.text.SimpleDateFormat
 
 definition(
     name: "Event Exporter",
@@ -132,6 +140,64 @@ def log_error(obj) {if (9 >= logLevels().indexOf("Error")) { log.error obj }}
 def log_debug(obj) {if (0 >= logLevels().indexOf("Debug")) { log.debug obj }}
 def log_trace(obj) {if (9 >= logLevels().indexOf("Trace")) { log.trace obj }}
 
+//-----------------------------------------------------
+def getSanitizedFBUri() {
+	def uri = dataServerUrl().trim()
+	
+	while (uri[-1] == '/') {
+		uri = uri[0..-2]
+	}
+	
+	uri
+}
+
+def escapeUTF8(string) {
+    try {
+        return string.collectReplacements{it >= 128 ? "\\u" + String.format("%04X", (int) it) : null}
+    } catch (e) {
+        log.error "error escapeUTF8 $e"
+    }
+   
+    return string
+}
+
+def sendToFB(data) {
+	def uri = "${getSanitizedFBUri()}/${settings.exportId}.json?print=silent&auth=${dataAuthToken()}"
+	
+	def map = [
+		uri: "$uri",
+		//body: ["x": "y"],
+		body: data,
+		headers : ["x-http-method-override" : "PATCH"]
+	]
+
+	try {
+		log.debug "sending $data to FireBase; old method"
+		httpPostJson(map) {}
+	} catch (e) {
+		log.error ("error writing to database. $e")
+	}
+		
+	return
+	
+	try {
+		def params = [
+			uri: "${getSanitizedFBUri()}/.json", 
+			query: [
+				print:	"silent",
+				auth:	"$dataAuthToken()"
+			],
+			body: data
+		]
+		log.debug "sending data to FireBase"
+		asynchttp_v1.patch(null, params)
+	} catch (e) {
+		log.error ("error writing to database. $e")
+	}
+}
+
+//-----------------------------------------------------
+
 
 def installed() {
 	log.info "Installing the SmartApp"
@@ -190,7 +256,7 @@ def getEventsOfDevice(device,start,end) {
 	]}
 	
     //log_trace "Events of Device: ${result}"
-    result.each { log_info "EVENT: ${it}" }
+    result.each { log_info "EVENT: ${it}"; sendToFB( ${it.to} ) }
     
     result
 }
@@ -340,6 +406,13 @@ def history() {
 	/* TODO: Could be an input parameter. Assume starting immediately today and going back 7 days. */
     def ago = 0
 	def todayUnix = new Date().getTime();
+	settings.exportId = getExportId();
+	
+	log_trace "Formatted date is ${settings.exportId}"
+	/* Sample format: def data = ["time" : timestamp, "server": server, id : ["instanceID" : ago ] ] */
+	
+	//sendToFB(data)
+	//return
 	
     log_debug "calling getAll"
     runIn(2, "getAllDeviceEvents", [data: [ago: ago, todayUnix: todayUnix]])
@@ -389,6 +462,11 @@ def handler(e) {
 	}
 }
 
+def getExportId() {
+	def ei = new java.text.SimpleDateFormat("yyyymmdd-hhmmss")
+    //if (location?.timeZone) tf.setTimeZone(location.timeZone)
+    "${ei.format(new Date())}"
+}
 
 
 def getTS() {
