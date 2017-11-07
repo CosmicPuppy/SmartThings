@@ -1,4 +1,4 @@
-def appVersion()  {"1.0.5"}     // Major.Minor.Hotfix (Official releases and pre-releases).
+def appVersion()  {"1.0.6"}     // Major.Minor.Hotfix (Official releases and pre-releases).
 
 /* ID: jgstexport.sa */
 def dataServerUrl() {"https://jgstexport.firebaseio.com/"}
@@ -133,14 +133,16 @@ def defaultPrefs(name) {
 */
 
 //----------------------------------------------------
-
 def logLevels() {["Error", "Warn", "Info", "Debug", "Trace"]}
 def log_info(obj)  {if (9 >= logLevels().indexOf("Info")) { log.info obj }}
 def log_error(obj) {if (9 >= logLevels().indexOf("Error")) { log.error obj }}
 def log_debug(obj) {if (0 >= logLevels().indexOf("Debug")) { log.debug obj }}
 def log_trace(obj) {if (9 >= logLevels().indexOf("Trace")) { log.trace obj }}
-
 //-----------------------------------------------------
+
+
+/* =============================================================================================================*/
+
 def getSanitizedFBUri() {
 	def uri = dataServerUrl().trim()
 	
@@ -150,6 +152,7 @@ def getSanitizedFBUri() {
 	
 	uri
 }
+
 
 def escapeUTF8(string) {
     try {
@@ -162,9 +165,35 @@ def escapeUTF8(string) {
 }
 
 
+def pushToFB(data) {
+	def uri = "${getSanitizedFBUri()}/JOB-${state.exportId}.json"
+    log_trace "Data:"
+    log_trace "${data}"
+	
+	def map = [
+		uri: "$uri",
+		query: [
+			print:	"silent",
+			auth:	dataAuthToken()
+		],
+		body: ["x"]
+	]
+
+	try {
+		log.debug "sending data to FireBase"
+		httpPostJson(map) {}
+		asynchttp_v1.patch(null, map)
+	} catch (e) {
+		log.error ("error writing to database. $e")
+	}
+} /* pushToFB */
+
+
 /* sendToFB NEW */
 def sendToFB(data) {
-	def uri = "${getSanitizedFBUri()}/JOB-${state.exportId}/${getTimestamp()}.json"
+	def uri = "${getSanitizedFBUri()}/JOB-${state.exportId}.json"
+    log_trace "Data:"
+    log_trace "${data}"
 	
 	def map = [
 		uri: "$uri",
@@ -174,18 +203,17 @@ def sendToFB(data) {
 		],
 		//body: ["x": "y"],
 		body: data,
-		//headers : ["x-http-method-override" : "POST"] // Use this to auto generate sequence keys
-		headers : ["x-http-method-override" : "PUT"] // Use this with manually generated sequence keys
 	]
 
 	try {
 		log.debug "sending data to FireBase"
-		//httpPutJson(map) {}
-		asynchttp_v1.put(null, map)
+		//httpPostJson(map) {}
+		asynchttp_v1.patch(null, map)
 	} catch (e) {
 		log.error ("error writing to database. $e")
 	}
 } /* sendToFB NEW */
+
 
 /* sendToFB OLD */
 def OLDsendToFB(data) {
@@ -196,12 +224,12 @@ def OLDsendToFB(data) {
 		//body: ["x": "y"],
 		body: data,
 		//headers : ["x-http-method-override" : "POST"] // Use this to auto generate sequence keys
-		headers : ["x-http-method-override" : "PUT"] // Use this with manually generated sequence keys
+		//headers : ["x-http-method-override" : "PUT"] // Use this with manually generated sequence keys
 	]
 
 	try {
 		log.debug "sending $data to FireBase:"
-		httpPostJson(map) {}
+		httpPutJson(map) {}
 	} catch (e) {
 		log.error ("error writing to database. $e")
 	}
@@ -250,50 +278,44 @@ def getEventsOfDevice(device,start,end) {
 	log_trace "getEventsOfDevice: ${device}; Start: ${start}; End: ${end}"
 	
 	/* Alternative: http://docs.smartthings.com/en/latest/ref-docs/device-ref.html#eventssince */
-    //def result = device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[
+    //OLD: def result = device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[
 
-	/*
-	def result = device.eventsBetween(start, end)?.collect{[
-		"time" : timestamp,
-        "date": it.date,
-		"deviceID": it.deviceId,
-		"name": it.name,
-        "displayName": it.displayName
-		//description: it.description,
-		//descriptionText: it.descriptionText,
-		//unit: it.unit,
-		//source: it.source,
-		//value: it.value,
-		//isDigital: it.isDigital(),
-		//isPhysical: it.isPhysical(),
-		///isStateChange: it.isStateChange()
-	]}
-	*/
-	
+	def result = device.eventsBetween(start, end)?.collect{
+	[ "${getTimestamp()}" :
+    	[
+            "date": formatDate(it.date),
+            "deviceID": it.deviceId,
+            "name": it.name,
+            "displayName": it.displayName,
+            "description": it.description,
+            "descriptionText": it.descriptionText,
+            "unit": it.unit,
+            "source": it.source,
+            "value": it.value,
+            "isDigital": it.isDigital(),
+            "isPhysical": it.isPhysical(),
+            "isStateChange": it.isStateChange()
+        ]
+    ]
+	}
+
 	def jsonOutput = new groovy.json.JsonOutput()
-	def result = device.eventsBetween(start, end)?.collect{[
-        "date": formatDate(it.date),
-		"deviceID": it.deviceId,
-		"name": it.name,
-        "displayName": it.displayName,
-		"description": it.description,
-		"descriptionText": it.descriptionText,
-		"unit": it.unit,
-		"source": it.source,
-		"value": it.value,
-		"isDigital": it.isDigital(),
-		"isPhysical": it.isPhysical(),
-		"isStateChange": it.isStateChange()
-	]}
-
-	def myData = []
+	//def myData = jsonOutput.toJson(result)
+    def myData = result
+    log_trace myData
+    
     //log_trace "Events of Device: ${result}"
     //result.each { log_info "EVENT: ${it}" }
+    pushToFB( [:] )
+	sendToFB( myData )
+	
+	/*
 	result.each {
 		myData = it
 		//log_trace "Sending: ${myData}"
 		sendToFB( myData )
 	}
+	*/
 	
     result
 }
