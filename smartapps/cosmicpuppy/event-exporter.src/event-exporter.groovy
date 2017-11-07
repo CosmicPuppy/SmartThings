@@ -1,4 +1,4 @@
-def appVersion()  {"1.0.6"}     // Major.Minor.Hotfix (Official releases and pre-releases).
+def appVersion()  {"1.1.0"}     // Major.Minor.Hotfix (Official releases and pre-releases).
 
 /* ID: jgstexport.sa */
 def dataServerUrl() {"https://jgstexport.firebaseio.com/"}
@@ -166,7 +166,7 @@ def escapeUTF8(string) {
 
 
 def pushToFB(data) {
-	def uri = "${getSanitizedFBUri()}/JOB-${state.exportId}.json"
+	def uri = "${getSanitizedFBUri()}/.json"
     log_trace "Data:"
     log_trace "${data}"
 	
@@ -176,13 +176,13 @@ def pushToFB(data) {
 			print:	"silent",
 			auth:	dataAuthToken()
 		],
-		body: ["x"]
+		body: ["JOB-${state.exportId}":"y"]
 	]
 
 	try {
 		log.debug "sending data to FireBase"
 		httpPostJson(map) {}
-		asynchttp_v1.patch(null, map)
+		asynchttp_v1.push(null, map)
 	} catch (e) {
 		log.error ("error writing to database. $e")
 	}
@@ -202,7 +202,7 @@ def sendToFB(data) {
 			auth:	dataAuthToken()
 		],
 		//body: ["x": "y"],
-		body: data,
+		body: data
 	]
 
 	try {
@@ -281,7 +281,7 @@ def getEventsOfDevice(device,start,end) {
     //OLD: def result = device.eventsBetween(then, today, [max: 200])?.findAll{"$it.source" == "DEVICE"}?.collect{[
 
 	def result = device.eventsBetween(start, end)?.collect{
-	[ "${getTimestamp()}" :
+	[ "\"${getTimestamp()}\"" :
     	[
             "date": formatDate(it.date),
             "deviceID": it.deviceId,
@@ -299,6 +299,7 @@ def getEventsOfDevice(device,start,end) {
     ]
 	}
 
+/*
 	def jsonOutput = new groovy.json.JsonOutput()
 	//def myData = jsonOutput.toJson(result)
     def myData = result
@@ -306,16 +307,16 @@ def getEventsOfDevice(device,start,end) {
     
     //log_trace "Events of Device: ${result}"
     //result.each { log_info "EVENT: ${it}" }
-    pushToFB( [:] )
 	sendToFB( myData )
-	
-	/*
+*/
+
+	def myData = [:]
 	result.each {
 		myData = it
-		//log_trace "Sending: ${myData}"
+		log_trace "Sending: ${myData}"
 		sendToFB( myData )
 	}
-	*/
+
 	
     result
 }
@@ -401,6 +402,8 @@ def getAllDeviceEvents(data) {
 
 	def result = filteredEvents.values()?.flatten()?.findAll{it}?.sort{"$it.date.time" + "$it.deviceType"}.reverse()
 	*/
+    
+    sendToFB( "000" : "test" )
 	
 	ago = ago + 1;
 	// TODO: should be 7
